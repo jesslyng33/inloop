@@ -7,6 +7,7 @@ import json
 import os
 import requests
 from tools import fetch_news
+from tools import transcribe_audio
 
 # API KEYS
 
@@ -45,7 +46,8 @@ for message in st.session_state.history:
         st.markdown(f"**You:** {message['content']}")
 
 # User input at the bottom, always visible
-user_input = st.text_input("Your question:", key="user_input")
+# user_input = st.text_input("Your question:", key="user_input")
+audio_bytes = st.audio_input("Record your question")
 
 # OPENAI CLIENT
 
@@ -88,6 +90,12 @@ def run_agent(user_input):
     else:
         st.session_state.history.append({"role": "assistant", "content": reply})
         st.write("\nIn Loop:", reply)
-            
-if user_input:
-    run_agent(user_input)
+        
+# if user_input:
+#    run_agent(user_input)
+
+if audio_bytes:
+    user_input = transcribe_audio(audio_bytes)
+    if user_input:
+        st.write(f"Transcribed question: {user_input}")
+        run_agent(user_input)
