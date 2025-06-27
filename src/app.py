@@ -6,9 +6,7 @@ from dotenv import load_dotenv
 import json
 import os
 import requests
-from tools import fetch_news, text_to_speech
-from tools import transcribe_audio
-from tools import clean_text
+from tools import fetch_news, text_to_speech, transcribe_audio
 
 # API KEYS
 
@@ -87,10 +85,8 @@ def run_agent(user_input):
                 
                 # Display text and generate speech
                 st.write("**In Loop:**", summary)
-                st.write("Generating audio...")
                 audio_data = text_to_speech(summary)
                 if audio_data:
-                    st.write("Audio generated successfully!")
                     st.audio(audio_data, format="audio/mp3")
                 else:
                     st.write("Failed to generate audio")
@@ -103,10 +99,8 @@ def run_agent(user_input):
         
         # Display text and generate speech
         st.write("**In Loop:**", reply)
-        st.write("Generating audio...")
         audio_data = text_to_speech(reply)
         if audio_data:
-            st.write("Audio generated successfully!")
             st.audio(audio_data, format="audio/mp3")
         else:
             st.write("Failed to generate audio")
