@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 import json
 import os
 import requests
-from tools import fetch_news
+from tools import fetch_news, text_to_speech
 from tools import transcribe_audio
+from tools import clean_text
 
 # API KEYS
 
@@ -83,13 +84,32 @@ def run_agent(user_input):
                 )
                 summary = response.choices[0].message.content.strip()
                 st.session_state.history.append({"role": "assistant", "content": summary})
-                st.write("\nIn Loop:", summary)
+                
+                # Display text and generate speech
+                st.write("**In Loop:**", summary)
+                st.write("Generating audio...")
+                audio_data = text_to_speech(summary)
+                if audio_data:
+                    st.write("Audio generated successfully!")
+                    st.audio(audio_data, format="audio/mp3")
+                else:
+                    st.write("Failed to generate audio")
                 
         except Exception as e:
             print("Tool call failed:", e)
+            st.write(f"Error: {e}")
     else:
         st.session_state.history.append({"role": "assistant", "content": reply})
-        st.write("\nIn Loop:", reply)
+        
+        # Display text and generate speech
+        st.write("**In Loop:**", reply)
+        st.write("Generating audio...")
+        audio_data = text_to_speech(reply)
+        if audio_data:
+            st.write("Audio generated successfully!")
+            st.audio(audio_data, format="audio/mp3")
+        else:
+            st.write("Failed to generate audio")
         
 # if user_input:
 #    run_agent(user_input)
