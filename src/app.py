@@ -88,6 +88,7 @@ def run_agent(user_input):
                 audio_data = text_to_speech(summary)
                 if audio_data:
                     st.audio(audio_data, format="audio/mp3")
+                    return audio_data
                 else:
                     st.write("Failed to generate audio")
                 
@@ -102,6 +103,7 @@ def run_agent(user_input):
         audio_data = text_to_speech(reply)
         if audio_data:
             st.audio(audio_data, format="audio/mp3")
+            return audio_data
         else:
             st.write("Failed to generate audio")
         

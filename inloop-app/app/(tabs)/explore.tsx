@@ -1,110 +1,191 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { Collapsible } from '@/components/Collapsible';
-import { ExternalLink } from '@/components/ExternalLink';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+import { ThemedText } from '@/components/ThemedText';
+import { Audio } from 'expo-av';
+import axios from 'axios';
+
+// Custom Microphone Icon Component
+const MicrophoneIcon = () => (
+  <View style={styles.iconContainer}>
+    {/* Microphone outline */}
+    <View style={styles.microphoneOutline}>
+      {/* Main body */}
+      <View style={styles.microphoneBody} />
+      {/* Base */}
+      <View style={styles.microphoneBase} />
+      {/* Stand */}
+      <View style={styles.microphoneStand} />
+    </View>
+  </View>
+);
 
 export default function TabTwoScreen() {
+  const recordAndSend = async () => {
+    console.log("recordAndSend function called");
+    
+    try {
+      // Set audio mode for iOS recording
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) {
+        console.log("Permission not granted");
+        return alert("Permission denied");
+      }
+      
+      console.log("Permission granted, starting recording");
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+
+      console.log("Recording started");
+
+      // Wait for 5 seconds or use a stop button
+      setTimeout(async () => {
+        console.log("in record function");
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI();
+        
+        if (!uri) {
+          alert("Failed to get recording URI");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('audio', {
+          uri: uri,
+          name: 'audio.m4a',
+          type: 'audio/m4a',
+        } as any);
+
+        console.log(uri)
+        console.log(formData)
+
+        try {
+          console.log("about to post")
+          const res = await axios.post("http://172.16.225.3:8000/run", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+            responseType: 'arraybuffer'
+          });
+
+          console.log("1")
+          // Convert arraybuffer to base64 for React Native
+          const uint8Array = new Uint8Array(res.data);
+          let binaryString = '';
+          for (let i = 0; i < uint8Array.length; i++) {
+            binaryString += String.fromCharCode(uint8Array[i]);
+          }
+          const base64Audio = btoa(binaryString);
+          console.log("2")
+          const soundObject = new Audio.Sound();
+          console.log("3")
+          await soundObject.loadAsync({ uri: `data:audio/mpeg;base64,${base64Audio}` });
+          console.log("4")
+          await soundObject.playAsync();
+        } catch (error) {
+          console.error("Error sending audio:", error);
+          alert("Failed to send audio");
+        }
+      }, 5000);
+    } catch (error) {
+      console.error("Error in recordAndSend:", error);
+    }
+  };
+
+  const handleMicrophonePress = () => {
+    // Handle microphone press - start recording and sending
+    console.log("clicked");
+    recordAndSend();
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Explore</ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image source={require('@/assets/images/react-logo.png')} style={{ alignSelf: 'center' }} />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Custom fonts">
-        <ThemedText>
-          Open <ThemedText type="defaultSemiBold">app/_layout.tsx</ThemedText> to see how to load{' '}
-          <ThemedText style={{ fontFamily: 'SpaceMono' }}>
-            custom fonts such as this one.
-          </ThemedText>
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/versions/latest/sdk/font">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful <ThemedText type="defaultSemiBold">react-native-reanimated</ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <ThemedView style={styles.container}>
+      {/* Red microphone button at the bottom */}
+      <View style={styles.microphoneContainer}>
+        <TouchableOpacity 
+          style={styles.microphoneButton}
+          onPress={handleMicrophonePress}
+          activeOpacity={0.8}
+        >
+          <MicrophoneIcon />
+        </TouchableOpacity>
+      </View>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff', // White background
   },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  microphoneContainer: {
+    flex: 1,
+    justifyContent: 'flex-end', // Align to bottom
+    alignItems: 'center',
+    paddingBottom: 100, // Space from bottom
+  },
+  microphoneButton: {
+    backgroundColor: '#ffffff', // White background for outline effect
+    width: 100,
+    height: 100,
+    borderRadius: 50, // Makes it circular
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#ff4444', // Red border
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8, // Android shadow
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  microphoneOutline: {
+    width: 30,
+    height: 30,
+    position: 'relative',
+  },
+  microphoneBody: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    width: 14,
+    height: 20,
+    borderWidth: 2,
+    borderColor: '#ff4444',
+    borderRadius: 7,
+  },
+  microphoneBase: {
+    position: 'absolute',
+    bottom: 0,
+    left: 4,
+    width: 22,
+    height: 8,
+    borderWidth: 2,
+    borderColor: '#ff4444',
+    borderRadius: 4,
+  },
+  microphoneStand: {
+    position: 'absolute',
+    bottom: 8,
+    left: 13,
+    width: 4,
+    height: 6,
+    borderWidth: 2,
+    borderColor: '#ff4444',
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
   },
 });
