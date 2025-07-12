@@ -54,6 +54,8 @@ def text_to_speech(text):
         )
 
         audio_bytes = b"".join(audio)
+        print("length", len(audio_bytes))
+        
         return audio_bytes
         
     except Exception as e:

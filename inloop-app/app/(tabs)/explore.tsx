@@ -3,7 +3,8 @@ import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { Audio } from 'expo-av';
 import axios from 'axios';
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
+import React from 'react';
 
 // Custom Microphone Icon Component
 const MicrophoneIcon = () => (
@@ -23,12 +24,25 @@ const MicrophoneIcon = () => (
 export default function TabTwoScreen() {
   // Add a ref to track if audio is playing
   const isPlayingRef = useRef(false);
-  // Add a ref for the mic monitor interval
+  // Add a ref for the mic monitor interv al
   const micMonitorInterval = useRef<NodeJS.Timeout | null>(null);
   // Add a ref to track the currently playing sound
   const soundRef = useRef<Audio.Sound | null>(null);
   // Threshold for detecting speech
   const MIC_THRESHOLD = -10; // dB, adjust as needed
+
+  useEffect(() => {
+    // On mount, unload any lingering Audio.Sound instances
+    (async () => {
+      if (typeof soundRef !== 'undefined' && soundRef.current) {
+        try {
+          await soundRef.current.stopAsync();
+          await soundRef.current.unloadAsync();
+        } catch (e) {}
+        soundRef.current = null;
+      }
+    })();
+  }, []);
 
   // Function to monitor mic during playback
   const monitorMicDuringPlayback = () => {
@@ -153,6 +167,7 @@ export default function TabTwoScreen() {
             responseType: 'arraybuffer'
           });
           console.log("1")
+          console.log('Backend response:', res);
           // Extract transcript from response headers and log it
           const transcriptHeader = res.headers['transcript'] || res.headers['Transcript'] || res.headers['TRANSCRIPT'];
           if (transcriptHeader) {
@@ -176,17 +191,6 @@ export default function TabTwoScreen() {
     recordAndSend();
   };
 
-  // Function to play the podcast.mp3 file
-  const playPodcast = async () => {
-    try {
-      const soundObject = new Audio.Sound();
-      await soundObject.loadAsync(require('../../podcast.mp3'));
-      await soundObject.playAsync();
-    } catch (error) {
-      console.error('Error playing podcast:', error);
-    }
-  };
-
   return (
     <ThemedView style={styles.container}>
       {/* Red microphone button at the bottom */}
@@ -197,13 +201,6 @@ export default function TabTwoScreen() {
           activeOpacity={0.8}
         >
           <MicrophoneIcon />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.microphoneButton, { marginTop: 20, borderColor: '#4444ff' }]}
-          onPress={playPodcast}
-          activeOpacity={0.8}
-        >
-          <ThemedText style={{ color: '#4444ff' }}>Podcast</ThemedText>
         </TouchableOpacity>
         <ThemedText style={{ marginTop: 20, color: '#ff4444' }}>
           {/* statusText is not defined in this file, so this line will cause an error */}
