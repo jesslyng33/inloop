@@ -3,6 +3,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { Audio } from 'expo-av';
 import axios from 'axios';
+import { useRef } from 'react';
 
 // Custom Microphone Icon Component
 const MicrophoneIcon = () => (
@@ -20,6 +21,87 @@ const MicrophoneIcon = () => (
 );
 
 export default function TabTwoScreen() {
+  // Add a ref to track if audio is playing
+  const isPlayingRef = useRef(false);
+  // Add a ref for the mic monitor interval
+  const micMonitorInterval = useRef<NodeJS.Timeout | null>(null);
+  // Add a ref to track the currently playing sound
+  const soundRef = useRef<Audio.Sound | null>(null);
+  // Threshold for detecting speech
+  const MIC_THRESHOLD = -10; // dB, adjust as needed
+
+  // Function to monitor mic during playback
+  const monitorMicDuringPlayback = () => {
+    if (micMonitorInterval.current) clearInterval(micMonitorInterval.current);
+    micMonitorInterval.current = setInterval(async () => {
+      if (!isPlayingRef.current) return;
+      // Start a short dummy recording to get metering
+      const dummyRecording = new Audio.Recording();
+      try {
+        await dummyRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.LOW_QUALITY);
+        await dummyRecording.startAsync();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const status = await dummyRecording.getStatusAsync();
+        const metering = status.metering ?? 0;
+        await dummyRecording.stopAndUnloadAsync();
+        if (metering > MIC_THRESHOLD) {
+          console.log('User is speaking during playback! (barge-in detected)');
+          // Stop playback
+          isPlayingRef.current = false;
+          if (micMonitorInterval.current) {
+            clearInterval(micMonitorInterval.current);
+            micMonitorInterval.current = null;
+          }
+          // Stop and unload the currently playing sound
+          if (soundRef.current) {
+            try {
+              await soundRef.current.stopAsync();
+              await soundRef.current.unloadAsync();
+            } catch (e) {
+              // Ignore errors
+            }
+            soundRef.current = null;
+          }
+          // Call recordAndSend for barge-in
+          await recordAndSend();
+        }
+      } catch (e) {
+        // Ignore errors from dummy recording
+      }
+    }, 300) as unknown as NodeJS.Timeout;
+  };
+
+  // Dedicated function to play answer audio
+  const playAnswerAudio = async (audioData: ArrayBuffer) => {
+    isPlayingRef.current = true;
+    monitorMicDuringPlayback();
+    // Convert arraybuffer to base64 for React Native
+    const uint8Array = new Uint8Array(audioData);
+    let binaryString = '';
+    for (let i = 0; i < uint8Array.length; i++) {
+      binaryString += String.fromCharCode(uint8Array[i]);
+    }
+    const base64Audio = btoa(binaryString);
+    const soundObject = new Audio.Sound();
+    soundRef.current = soundObject;
+    await soundObject.loadAsync({ uri: `data:audio/mpeg;base64,${base64Audio}` });
+    await soundObject.playAsync();
+    soundObject.setOnPlaybackStatusUpdate((status) => {
+      if (!status.isLoaded) return;
+      if (status.didJustFinish) {
+        isPlayingRef.current = false;
+        if (micMonitorInterval.current) {
+          clearInterval(micMonitorInterval.current);
+          micMonitorInterval.current = null;
+        }
+        if (soundRef.current) {
+          soundRef.current.unloadAsync();
+          soundRef.current = null;
+        }
+      }
+    });
+  };
+
   const recordAndSend = async () => {
     console.log("recordAndSend function called");
     
@@ -66,25 +148,18 @@ export default function TabTwoScreen() {
 
         try {
           console.log("about to post")
-          const res = await axios.post("http://172.16.225.3:8000/run", formData, {
+          const res = await axios.post("http://172.20.10.9:8000/run", formData, {
             headers: { "Content-Type": "multipart/form-data" },
             responseType: 'arraybuffer'
           });
-
           console.log("1")
-          // Convert arraybuffer to base64 for React Native
-          const uint8Array = new Uint8Array(res.data);
-          let binaryString = '';
-          for (let i = 0; i < uint8Array.length; i++) {
-            binaryString += String.fromCharCode(uint8Array[i]);
+          // Extract transcript from response headers and log it
+          const transcriptHeader = res.headers['transcript'] || res.headers['Transcript'] || res.headers['TRANSCRIPT'];
+          if (transcriptHeader) {
+            console.log('User said:', transcriptHeader);
           }
-          const base64Audio = btoa(binaryString);
-          console.log("2")
-          const soundObject = new Audio.Sound();
-          console.log("3")
-          await soundObject.loadAsync({ uri: `data:audio/mpeg;base64,${base64Audio}` });
-          console.log("4")
-          await soundObject.playAsync();
+          // Use the dedicated playback function
+          await playAnswerAudio(res.data);
         } catch (error) {
           console.error("Error sending audio:", error);
           alert("Failed to send audio");
@@ -101,6 +176,17 @@ export default function TabTwoScreen() {
     recordAndSend();
   };
 
+  // Function to play the podcast.mp3 file
+  const playPodcast = async () => {
+    try {
+      const soundObject = new Audio.Sound();
+      await soundObject.loadAsync(require('../../podcast.mp3'));
+      await soundObject.playAsync();
+    } catch (error) {
+      console.error('Error playing podcast:', error);
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       {/* Red microphone button at the bottom */}
@@ -112,6 +198,17 @@ export default function TabTwoScreen() {
         >
           <MicrophoneIcon />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.microphoneButton, { marginTop: 20, borderColor: '#4444ff' }]}
+          onPress={playPodcast}
+          activeOpacity={0.8}
+        >
+          <ThemedText style={{ color: '#4444ff' }}>Podcast</ThemedText>
+        </TouchableOpacity>
+        <ThemedText style={{ marginTop: 20, color: '#ff4444' }}>
+          {/* statusText is not defined in this file, so this line will cause an error */}
+          {/* {statusText} */}
+        </ThemedText>
       </View>
     </ThemedView>
   );
