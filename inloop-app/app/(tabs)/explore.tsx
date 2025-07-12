@@ -3,7 +3,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { Audio } from 'expo-av';
 import axios from 'axios';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import React from 'react';
 
 // Custom Microphone Icon Component
@@ -30,6 +30,8 @@ export default function TabTwoScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
   // Threshold for detecting speech
   const MIC_THRESHOLD = -10; // dB, adjust as needed
+  const podcastSoundRef = useRef<Audio.Sound | null>(null);
+  const [isPodcastPlaying, setIsPodcastPlaying] = useState(false);
 
   useEffect(() => {
     // On mount, unload any lingering Audio.Sound instances
@@ -191,6 +193,41 @@ export default function TabTwoScreen() {
     recordAndSend();
   };
 
+  const togglePodcast = async () => {
+    if (isPodcastPlaying) {
+      // Stop and unload
+      if (podcastSoundRef.current) {
+        try {
+          await podcastSoundRef.current.stopAsync();
+          await podcastSoundRef.current.unloadAsync();
+        } catch (e) {}
+        podcastSoundRef.current = null;
+      }
+      setIsPodcastPlaying(false);
+    } else {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        });
+        const { sound } = await Audio.Sound.createAsync(require('../../podcast.mp3'));
+        podcastSoundRef.current = sound;
+        setIsPodcastPlaying(true);
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
+            setIsPodcastPlaying(false);
+            podcastSoundRef.current?.unloadAsync();
+            podcastSoundRef.current = null;
+          }
+        });
+        await sound.playAsync();
+      } catch (error) {
+        console.error('Error playing podcast:', error);
+        setIsPodcastPlaying(false);
+      }
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       {/* Red microphone button at the bottom */}
@@ -202,10 +239,13 @@ export default function TabTwoScreen() {
         >
           <MicrophoneIcon />
         </TouchableOpacity>
-        <ThemedText style={{ marginTop: 20, color: '#ff4444' }}>
-          {/* statusText is not defined in this file, so this line will cause an error */}
-          {/* {statusText} */}
-        </ThemedText>
+        <TouchableOpacity
+          style={[styles.microphoneButton, { marginTop: 20, borderColor: '#4444ff' }]}
+          onPress={togglePodcast}
+          activeOpacity={0.8}
+        >
+          <ThemedText style={{ color: '#4444ff' }}>{isPodcastPlaying ? 'Stop Podcast' : 'Podcast'}</ThemedText>
+        </TouchableOpacity>
       </View>
     </ThemedView>
   );
@@ -281,5 +321,21 @@ const styles = StyleSheet.create({
     borderColor: '#ff4444',
     borderLeftWidth: 0,
     borderRightWidth: 0,
+  },
+  podcastButton: {
+    backgroundColor: '#fff',
+    width: 140,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#4444ff',
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });
