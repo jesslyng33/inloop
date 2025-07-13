@@ -19,6 +19,8 @@ history = []
 
 # FUNCTION: takes in user_input in text and returns chat output in audio
 def run_agent(user_input):
+    if "history" not in st.session_state:
+        st.session_state.history = []
     history.append({"role": "user", "content": user_input})
     response = client.chat.completions.create(
         model="gpt-4o-mini",

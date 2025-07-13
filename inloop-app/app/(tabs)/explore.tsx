@@ -29,11 +29,19 @@ export default function TabTwoScreen() {
   // Add a ref to track the currently playing sound
   const soundRef = useRef<Audio.Sound | null>(null);
   // Threshold for detecting speech
-  const MIC_THRESHOLD = -10; // dB, adjust as needed
+  const MIC_THRESHOLD = -35; // dB, adjust as needed
   const podcastSoundRef = useRef<Audio.Sound | null>(null);
   const [isPodcastPlaying, setIsPodcastPlaying] = useState(false);
+  // Add a ref to track podcast playing state for use in monitorMicDuringPlayback
+  const isPodcastPlayingRef = useRef(isPodcastPlaying);
+  const [podcastResumePosition, setPodcastResumePosition] = useState<number | null>(null);
+  const [shouldResumePodcast, setShouldResumePodcast] = useState(false);
+  const shouldResumePodcastRef = useRef(false);
+  const podcastResumePositionRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Keep the ref in sync with the state
+    isPodcastPlayingRef.current = isPodcastPlaying;
     // On mount, unload any lingering Audio.Sound instances
     (async () => {
       if (typeof soundRef !== 'undefined' && soundRef.current) {
@@ -44,13 +52,13 @@ export default function TabTwoScreen() {
         soundRef.current = null;
       }
     })();
-  }, []);
+  }, [isPodcastPlaying]);
 
   // Function to monitor mic during playback
   const monitorMicDuringPlayback = () => {
     if (micMonitorInterval.current) clearInterval(micMonitorInterval.current);
     micMonitorInterval.current = setInterval(async () => {
-      if (!isPlayingRef.current) return;
+      if (!isPlayingRef.current && !isPodcastPlayingRef.current) return;
       // Start a short dummy recording to get metering
       const dummyRecording = new Audio.Recording();
       try {
@@ -78,6 +86,22 @@ export default function TabTwoScreen() {
             }
             soundRef.current = null;
           }
+          // If podcast is playing, stop and unload it, and save position for resume
+          if (isPodcastPlayingRef.current && podcastSoundRef.current) {
+            try {
+              const status = await podcastSoundRef.current.getStatusAsync();
+              if (status.isLoaded) {
+                setPodcastResumePosition(status.positionMillis);
+                podcastResumePositionRef.current = status.positionMillis;
+                setShouldResumePodcast(true);
+                shouldResumePodcastRef.current = true;
+              }
+              await podcastSoundRef.current.stopAsync();
+              await podcastSoundRef.current.unloadAsync();
+            } catch (e) {}
+            podcastSoundRef.current = null;
+            setIsPodcastPlaying(false);
+          }
           // Call recordAndSend for barge-in
           await recordAndSend();
         }
@@ -89,8 +113,12 @@ export default function TabTwoScreen() {
 
   // Dedicated function to play answer audio
   const playAnswerAudio = async (audioData: ArrayBuffer) => {
+    // Stop mic monitoring before playing answer audio
+    if (micMonitorInterval.current) {
+      clearInterval(micMonitorInterval.current);
+      micMonitorInterval.current = null;
+    }
     isPlayingRef.current = true;
-    monitorMicDuringPlayback();
     // Convert arraybuffer to base64 for React Native
     const uint8Array = new Uint8Array(audioData);
     let binaryString = '';
@@ -102,7 +130,7 @@ export default function TabTwoScreen() {
     soundRef.current = soundObject;
     await soundObject.loadAsync({ uri: `data:audio/mpeg;base64,${base64Audio}` });
     await soundObject.playAsync();
-    soundObject.setOnPlaybackStatusUpdate((status) => {
+    soundObject.setOnPlaybackStatusUpdate(async (status) => {
       if (!status.isLoaded) return;
       if (status.didJustFinish) {
         isPlayingRef.current = false;
@@ -113,6 +141,15 @@ export default function TabTwoScreen() {
         if (soundRef.current) {
           soundRef.current.unloadAsync();
           soundRef.current = null;
+        }
+        // Resume podcast if needed
+        if (shouldResumePodcastRef.current && podcastResumePositionRef.current !== null) {
+          console.log("resuming podcast");
+          setShouldResumePodcast(false);
+          shouldResumePodcastRef.current = false;
+          await resumePodcastFromPosition(podcastResumePositionRef.current);
+          setPodcastResumePosition(null);
+          podcastResumePositionRef.current = null;
         }
       }
     });
@@ -164,7 +201,7 @@ export default function TabTwoScreen() {
 
         try {
           console.log("about to post")
-          const res = await axios.post("http://172.20.10.9:8000/run", formData, {
+          const res = await axios.post("http://192.168.4.26:8000/run", formData, {
             headers: { "Content-Type": "multipart/form-data" },
             responseType: 'arraybuffer'
           });
@@ -207,12 +244,16 @@ export default function TabTwoScreen() {
     } else {
       try {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
+          allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
         });
         const { sound } = await Audio.Sound.createAsync(require('../../podcast.mp3'));
         podcastSoundRef.current = sound;
         setIsPodcastPlaying(true);
+        // Start mic monitoring for podcast barge-in
+        monitorMicDuringPlayback();
         sound.setOnPlaybackStatusUpdate((status) => {
           if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
             setIsPodcastPlaying(false);
@@ -225,6 +266,34 @@ export default function TabTwoScreen() {
         console.error('Error playing podcast:', error);
         setIsPodcastPlaying(false);
       }
+    }
+  };
+
+  // Helper to resume podcast from a given position
+  const resumePodcastFromPosition = async (positionMillis: number) => {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      const { sound } = await Audio.Sound.createAsync(require('../../podcast.mp3'), { positionMillis });
+      podcastSoundRef.current = sound;
+      setIsPodcastPlaying(true);
+      // Start mic monitoring for podcast barge-in after resuming
+      monitorMicDuringPlayback();
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
+          setIsPodcastPlaying(false);
+          podcastSoundRef.current?.unloadAsync();
+          podcastSoundRef.current = null;
+        }
+      });
+      await sound.playAsync();
+    } catch (error) {
+      console.error('Error resuming podcast:', error);
+      setIsPodcastPlaying(false);
     }
   };
 
