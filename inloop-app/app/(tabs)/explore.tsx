@@ -29,7 +29,7 @@ export default function TabTwoScreen() {
   // Add a ref to track the currently playing sound
   const soundRef = useRef<Audio.Sound | null>(null);
   // Threshold for detecting speech
-  const MIC_THRESHOLD = -35; // dB, adjust as needed
+  const MIC_THRESHOLD = -25; // dB, adjust as needed
   const podcastSoundRef = useRef<Audio.Sound | null>(null);
   const [isPodcastPlaying, setIsPodcastPlaying] = useState(false);
   // Add a ref to track podcast playing state for use in monitorMicDuringPlayback
@@ -38,6 +38,8 @@ export default function TabTwoScreen() {
   const [shouldResumePodcast, setShouldResumePodcast] = useState(false);
   const shouldResumePodcastRef = useRef(false);
   const podcastResumePositionRef = useRef<number | null>(null);
+  const [micBaseline, setMicBaseline] = useState<number | null>(null);
+  const MIC_SPIKE_DELTA = 12; // dB difference to trigger barge-in
 
   useEffect(() => {
     // Keep the ref in sync with the state
@@ -59,7 +61,6 @@ export default function TabTwoScreen() {
     if (micMonitorInterval.current) clearInterval(micMonitorInterval.current);
     micMonitorInterval.current = setInterval(async () => {
       if (!isPlayingRef.current && !isPodcastPlayingRef.current) return;
-      // Start a short dummy recording to get metering
       const dummyRecording = new Audio.Recording();
       try {
         await dummyRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.LOW_QUALITY);
@@ -68,7 +69,15 @@ export default function TabTwoScreen() {
         const status = await dummyRecording.getStatusAsync();
         const metering = status.metering ?? 0;
         await dummyRecording.stopAndUnloadAsync();
-        if (metering > MIC_THRESHOLD) {
+
+        // If baseline is not set, set it and skip this interval
+        if (micBaseline === null) {
+          setMicBaseline(metering);
+          return;
+        }
+
+        // Detect spike
+        if (metering - micBaseline > MIC_SPIKE_DELTA) {
           console.log('User is speaking during playback! (barge-in detected)');
           // Stop playback
           isPlayingRef.current = false;
@@ -201,7 +210,7 @@ export default function TabTwoScreen() {
 
         try {
           console.log("about to post")
-          const res = await axios.post("http://192.168.4.26:8000/run", formData, {
+          const res = await axios.post("http://172.20.40.42:8000/run", formData, {
             headers: { "Content-Type": "multipart/form-data" },
             responseType: 'arraybuffer'
           });
@@ -250,10 +259,13 @@ export default function TabTwoScreen() {
           playThroughEarpieceAndroid: false,
         });
         const { sound } = await Audio.Sound.createAsync(require('../../podcast.mp3'));
+        await sound.setVolumeAsync(0.5); // Set volume to 50%
         podcastSoundRef.current = sound;
         setIsPodcastPlaying(true);
-        // Start mic monitoring for podcast barge-in
-        monitorMicDuringPlayback();
+        // Start mic monitoring for podcast barge-in AFTER 1 second pause
+        setTimeout(() => {
+          monitorMicDuringPlayback();
+        }, 1000);
         sound.setOnPlaybackStatusUpdate((status) => {
           if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
             setIsPodcastPlaying(false);
@@ -279,10 +291,13 @@ export default function TabTwoScreen() {
         playThroughEarpieceAndroid: false,
       });
       const { sound } = await Audio.Sound.createAsync(require('../../podcast.mp3'), { positionMillis });
+      await sound.setVolumeAsync(0.5); // Set volume to 50%
       podcastSoundRef.current = sound;
       setIsPodcastPlaying(true);
-      // Start mic monitoring for podcast barge-in after resuming
-      monitorMicDuringPlayback();
+      // Start mic monitoring for podcast barge-in AFTER 1 second pause
+      setTimeout(() => {
+        monitorMicDuringPlayback();
+      }, 1000);
       sound.setOnPlaybackStatusUpdate((status) => {
         if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
           setIsPodcastPlaying(false);

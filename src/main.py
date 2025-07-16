@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import StreamingResponse, JSONResponse
-from funcs import run_agent, transcribe_audio
+from funcs import run_agent, transcribe_audio, transcribe_podcast
 import io
 
 # API
@@ -17,7 +17,6 @@ async def run_voice_pipeline(audio: UploadFile = File(...)):
     
     # transcribe audio (audio to text)
     audio_bytes = await audio.read()
-    transcript = transcribe_audio(io.BytesIO(audio_bytes))
 
     if not transcript:
         return JSONResponse(status_code=400, content={"error": "Transcription failed"})
